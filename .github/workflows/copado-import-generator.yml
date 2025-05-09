@@ -1,0 +1,235 @@
+name: Copado Import Component List Generator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  generate-component-list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Fetch all history to properly identify changed files
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For pull requests, get files changed between PR base and head
+            echo "Getting changed files in PR"
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+          else
+            # For workflow_dispatch, get all files in the repo
+            echo "Getting all files in repo (excluding hidden)"
+            CHANGED_FILES=$(find . -type f -not -path "*/\.*" | sed 's/^\.\///')
+          fi
+          
+          # Save to file
+          echo "$CHANGED_FILES" > changed_files.txt
+          
+          # Display detected files for debugging
+          echo "Detected files:"
+          echo "------------------------------------------------------------"
+          cat changed_files.txt
+          echo "------------------------------------------------------------"
+          echo "Total files detected: $(wc -l < changed_files.txt)"
+
+      - name: Generate Copado Import List
+        id: generate-import-list
+        run: |
+          # Create output file
+          touch copado_import_list.txt
+          
+          echo "Processing files for Copado format..."
+          echo "------------------------------------------------------------"
+          
+          # Process each file and convert to Copado format
+          while IFS= read -r file; do
+            # Skip if file is empty or just whitespace
+            if [[ -z "${file// }" ]]; then
+              continue
+            fi
+            
+            echo "Analyzing file: $file"
+            COPADO_FORMAT=""
+            
+            # Extract component information from the path
+            if [[ $file == *"force-app/main/default/"* ]]; then
+              # SFDX format handling
+              path_without_prefix=${file#*force-app/main/default/}
+              echo "  - SFDX format detected: $path_without_prefix"
+              
+              # Handle different metadata types
+              if [[ $path_without_prefix == classes/* ]]; then
+                if [[ $path_without_prefix == *.cls ]]; then
+                  name=${path_without_prefix#classes/}
+                  name=${name%.cls}
+                  COPADO_FORMAT="ApexClass/$name"
+                  echo "  - Found Apex Class: $name"
+                fi
+              elif [[ $path_without_prefix == triggers/* ]]; then
+                if [[ $path_without_prefix == *.trigger ]]; then
+                  name=${path_without_prefix#triggers/}
+                  name=${name%.trigger}
+                  COPADO_FORMAT="ApexTrigger/$name" 
+                  echo "  - Found Apex Trigger: $name"
+                fi
+              elif [[ $path_without_prefix == pages/* ]]; then
+                if [[ $path_without_prefix == *.page ]]; then
+                  name=${path_without_prefix#pages/}
+                  name=${name%.page}
+                  COPADO_FORMAT="ApexPage/$name"
+                  echo "  - Found Apex Page: $name"
+                fi
+              elif [[ $path_without_prefix == components/* ]]; then
+                if [[ $path_without_prefix == *.component ]]; then
+                  name=${path_without_prefix#components/}
+                  name=${name%.component}
+                  COPADO_FORMAT="ApexComponent/$name"
+                  echo "  - Found Apex Component: $name"
+                fi
+              elif [[ $path_without_prefix == lwc/* ]]; then
+                # LWC components are in directories
+                dir=$(dirname "$path_without_prefix")
+                if [[ $dir != "lwc" ]]; then
+                  component_name=${dir#lwc/}
+                  # Only add once per component
+                  if [[ $path_without_prefix == *"$component_name/$component_name.js" ]]; then
+                    COPADO_FORMAT="LightningComponentBundle/$component_name"
+                    echo "  - Found LWC: $component_name"
+                  fi
+                fi
+              elif [[ $path_without_prefix == aura/* ]]; then
+                # Aura components are in directories
+                dir=$(dirname "$path_without_prefix")
+                if [[ $dir != "aura" ]]; then
+                  component_name=${dir#aura/}
+                  # Only add once per component
+                  if [[ $path_without_prefix == *"$component_name/$component_name.cmp" ]]; then
+                    COPADO_FORMAT="AuraDefinitionBundle/$component_name"
+                    echo "  - Found Aura Component: $component_name"
+                  fi
+                fi
+              elif [[ $path_without_prefix == objects/* ]]; then
+                if [[ $path_without_prefix == *.object-meta.xml ]]; then
+                  name=${path_without_prefix#objects/}
+                  name=${name%.object-meta.xml}
+                  COPADO_FORMAT="CustomObject/$name"
+                  echo "  - Found Custom Object: $name"
+                elif [[ $path_without_prefix == */fields/*.field-meta.xml ]]; then
+                  obj_name=$(echo $path_without_prefix | awk -F/ '{print $2}')
+                  field_name=$(basename $path_without_prefix .field-meta.xml)
+                  COPADO_FORMAT="CustomField/$obj_name.$field_name"
+                  echo "  - Found Custom Field: $obj_name.$field_name"
+                fi
+              fi
+            elif [[ $file == *"src/"* ]]; then
+              # Handle classic format
+              path_without_prefix=${file#*src/}
+              echo "  - Classic format detected: $path_without_prefix"
+              
+              # Handle different metadata types based on classic format
+              if [[ $path_without_prefix == classes/* ]]; then
+                if [[ $path_without_prefix == *.cls ]]; then
+                  name=${path_without_prefix#classes/}
+                  name=${name%.cls}
+                  COPADO_FORMAT="ApexClass/$name"
+                  echo "  - Found Apex Class: $name"
+                fi
+              elif [[ $path_without_prefix == triggers/* ]]; then
+                if [[ $path_without_prefix == *.trigger ]]; then
+                  name=${path_without_prefix#triggers/}
+                  name=${name%.trigger}
+                  COPADO_FORMAT="ApexTrigger/$name"
+                  echo "  - Found Apex Trigger: $name"
+                fi
+              fi
+            elif [[ $file == *.cls ]]; then
+              # Fallback for standard class files without standard path structure
+              name=$(basename "$file" .cls)
+              COPADO_FORMAT="ApexClass/$name"
+              echo "  - Found standalone Apex Class: $name"
+            elif [[ $file == *.trigger ]]; then
+              # Fallback for standard trigger files without standard path structure
+              name=$(basename "$file" .trigger)
+              COPADO_FORMAT="ApexTrigger/$name"
+              echo "  - Found standalone Apex Trigger: $name"
+            elif [[ $file == *.page ]]; then
+              # Fallback for standard page files without standard path structure
+              name=$(basename "$file" .page)
+              COPADO_FORMAT="ApexPage/$name"
+              echo "  - Found standalone Apex Page: $name"
+            fi
+            
+            # Add to the import list if a format was determined
+            if [[ ! -z "$COPADO_FORMAT" ]]; then
+              echo "$COPADO_FORMAT" >> copado_import_list.txt
+              echo "  → Added to Copado list: $COPADO_FORMAT"
+            else
+              echo "  ✕ No Copado format determined for this file"
+            fi
+            
+          done < changed_files.txt
+          
+          # Remove duplicates
+          sort copado_import_list.txt | uniq > copado_import_list_unique.txt
+          mv copado_import_list_unique.txt copado_import_list.txt
+          
+          # Count results
+          COMP_COUNT=$(wc -l < copado_import_list.txt)
+          
+          # Display the result
+          echo "------------------------------------------------------------"
+          echo "Found $COMP_COUNT components for Copado import:"
+          if [ "$COMP_COUNT" -gt 0 ]; then
+            cat copado_import_list.txt
+          else
+            echo "NO COMPONENTS FOUND! Make sure your PR includes Salesforce metadata files."
+          fi
+          echo "------------------------------------------------------------"
+
+      - name: Display Component List for Copado Import
+        run: |
+          # Check if we found any components
+          COMP_COUNT=$(wc -l < copado_import_list.txt)
+          
+          echo "================================================================="
+          echo "                     COPADO IMPORT COMPONENT LIST                "
+          echo "================================================================="
+          echo ""
+          
+          if [ "$COMP_COUNT" -gt 0 ]; then
+            echo "Copy everything between the START and END markers below:"
+            echo ""
+            echo "---------------------START COPY FROM HERE----------------------"
+            cat copado_import_list.txt
+            echo "----------------------END COPY HERE---------------------------"
+            echo ""
+            echo "Paste this list into Copado: More > Import Component Selections"
+          else
+            echo "NO COMPONENTS FOUND IN THIS PR!"
+            echo ""
+            echo "Possible reasons:"
+            echo "1. The PR doesn't contain any Salesforce metadata files"
+            echo "2. The files don't match the expected patterns/paths"
+            echo "3. The files aren't in standard Salesforce project structure"
+            echo ""
+            echo "To manually add components, use these formats (examples):"
+            echo "---------------------START EXAMPLES----------------------"
+            echo "ApexClass/MyClassName"
+            echo "ApexTrigger/MyTriggerName"
+            echo "CustomObject/MyObject__c"
+            echo "CustomField/MyObject__c.MyField__c"
+            echo "LightningComponentBundle/myLwcName"
+            echo "---------------------END EXAMPLES----------------------"
+          fi
+          
+      - name: Skip PR Comment (permission issue)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Skipping PR comment due to permission limitations"
+          echo "Please check the 'Display Component List for Copado Import' step in the logs"
+          echo "and copy the component list from there."
