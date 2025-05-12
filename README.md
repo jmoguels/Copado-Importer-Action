@@ -1,24 +1,17 @@
-# Copado Import Component List Generator
+Table of Contents
 
-This GitHub Action automatically generates a formatted list of Salesforce components from your pull requests, ready to be imported into Copado Essentials using the "Import Component Selections" feature.
+Setup Instructions
+How It Works
+Usage Guide
+Supported Component Types
+Test Classes Detection
+Troubleshooting
+Customization
 
-## Table of Contents
-
-- [Setup Instructions](#setup-instructions)
-- [How It Works](#how-it-works)
-- [Usage Guide](#usage-guide)
-- [Supported Component Types](#supported-component-types)
-- [Troubleshooting](#troubleshooting)
-- [Customization](#customization)
-
-## Setup Instructions
-
-### 1. Add the GitHub Action to your repository
-
-Create a new file at `.github/workflows/copado-import-generator.yml` with the following content:
-
-```yaml
-name: Copado Import Component List Generator
+Setup Instructions
+1. Add the GitHub Action to your repository
+Create a new file at .github/workflows/copado-import-generator.yml with the following content:
+yamlname: Copado Import Component List Generator
 
 on:
   pull_request:
@@ -246,6 +239,76 @@ jobs:
           fi
           echo "------------------------------------------------------------"
 
+      - name: Generate Test Classes List
+        id: generate-test-list
+        run: |
+          # Create output file for test classes
+          touch test_classes_list.txt
+          
+          echo "Identifying test classes..."
+          echo "------------------------------------------------------------"
+          
+          # Process each file to find test classes
+          while IFS= read -r file; do
+            # Skip if file is empty or just whitespace
+            if [[ -z "${file// }" ]]; then
+              continue
+            fi
+            
+            # Only look at apex class files
+            if [[ $file == *.cls ]]; then
+              echo "Checking for test class: $file"
+              
+              # Read the file content and check for @isTest or testMethod
+              if grep -q -E '@isTest|testMethod' "$file"; then
+                # Extract class name from path
+                if [[ $file == *"force-app/main/default/classes/"* ]]; then
+                  # SFDX format
+                  name=${file#*force-app/main/default/classes/}
+                  name=${name%.cls}
+                  echo "  ✓ Found test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                elif [[ $file == *"src/classes/"* ]]; then
+                  # Classic format
+                  name=${file#*src/classes/}
+                  name=${name%.cls}
+                  echo "  ✓ Found test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                else
+                  # Try general extraction for non-standard paths
+                  name=$(basename "$file" .cls)
+                  echo "  ✓ Found standalone test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                fi
+              else
+                echo "  ✕ Not a test class"
+              fi
+            fi
+          done < changed_files.txt
+          
+          # Create comma-separated list
+          TEST_CLASSES_CSV=$(paste -sd "," test_classes_list.txt)
+          
+          # Count results
+          TEST_COUNT=$(wc -l < test_classes_list.txt)
+          
+          # Display the result
+          echo "------------------------------------------------------------"
+          echo "Found $TEST_COUNT test classes:"
+          if [ "$TEST_COUNT" -gt 0 ]; then
+            echo "Individual classes:"
+            cat test_classes_list.txt
+            echo ""
+            echo "Comma-separated list for Copado:"
+            echo "$TEST_CLASSES_CSV"
+          else
+            echo "NO TEST CLASSES FOUND in the analyzed files."
+          fi
+          echo "------------------------------------------------------------"
+          
+          # Save for later use
+          echo "$TEST_CLASSES_CSV" > test_classes_comma_list.txt
+
       - name: Display Component List for Copado Import
         run: |
           # Check if we found any components
@@ -269,138 +332,113 @@ jobs:
             echo ""
             echo "Possible reasons:"
             echo "1. The PR doesn't contain any Salesforce metadata files"
-            echo "2. The files don't match the expected patterns/paths"
-            echo "3. The files aren't in standard Salesforce project structure"
-            echo ""
-            echo "To manually add components, use these formats (examples):"
-            echo "---------------------START EXAMPLES----------------------"
-            echo "ApexClass/MyClassName"
-            echo "ApexTrigger/MyTriggerName"
-            echo "CustomObject/MyObject__c"
-            echo "CustomField/MyObject__c.MyField__c"
-            echo "LightningComponentBundle/myLwcName"
-            echo "---------------------END EXAMPLES----------------------"
-          fi
-
-      - name: Skip PR Comment (permission issue)
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "Skipping PR comment due to permission limitations"
-          echo "Please check the 'Display Component List for Copado Import' step in the logs"
-          echo "and copy the component list from there."
-```
-
-### 2. Commit the file to your repository
-
+            echo "2. The files don't match the expected patterns
+2. Commit the file to your repository
 You can commit directly to your main branch, or create a new branch and then open a PR to merge it.
-
-## How It Works
-
+How It Works
 This GitHub Action:
 
-1. **Automatically runs** when:
-   - Pull requests are opened, updated, or reopened
-   - Manually triggered via the "Actions" tab in your repository
+Automatically runs when:
 
-2. **Identifies files** by:
-   - For PRs: Examining files changed in the pull request
-   - For manual runs: Scanning all files in the repository
+Pull requests are opened, updated, or reopened
+Manually triggered via the "Actions" tab in your repository
 
-3. **Analyzes each file** to:
-   - Detect if it's a Salesforce metadata component
-   - Determine its component type (Apex Class, LWC, etc.)
-   - Format it correctly for Copado Essentials
 
-4. **Generates a formatted list** that's ready to paste into Copado's "Import Component Selections" feature
+Identifies files by:
 
-## Usage Guide
+For PRs: Examining files changed in the pull request
+For manual runs: Scanning all files in the repository
 
-### Using with Pull Requests
 
-1. Create or update a pull request with Salesforce metadata changes
-2. The action will automatically run
-3. Go to the "Actions" tab in your repository
-4. Click on the latest workflow run for your PR
-5. Click on the "generate-component-list" job
-6. Find the "Display Component List for Copado Import" step
-7. Copy the text between the START and END markers
-8. In Copado Essentials:
-   - Open your deployment
-   - Click "More > Import Component Selections"
-   - Paste the copied text and click Import
+Analyzes each file to:
 
-### Using Manually
+Detect if it's a Salesforce metadata component
+Determine its component type (Apex Class, LWC, etc.)
+Format it correctly for Copado Essentials
+Identify test classes by scanning for @isTest or testMethod
 
-1. Go to the "Actions" tab in your repository
-2. Select "Copado Import Component List Generator" from the list
-3. Click "Run workflow" (Use the default branch, typically "main")
-4. Once complete, click on the workflow run
-5. Click on the "generate-component-list" job
-6. Find the "Display Component List for Copado Import" step
-7. Copy the text between the START and END markers
-8. In Copado Essentials:
-   - Open your deployment
-   - Click "More > Import Component Selections"
-   - Paste the copied text and click Import
 
-## Supported Component Types
+Generates two formatted lists:
 
+A component list ready to paste into Copado's "Import Component Selections"
+A comma-separated test class list for Copado's "Specify Tests" feature
+
+
+
+Usage Guide
+Using with Pull Requests
+
+Create or update a pull request with Salesforce metadata changes
+The action will automatically run
+Go to the "Actions" tab in your repository
+Click on the latest workflow run for your PR
+Click on the "generate-component-list" job
+Find the following sections in the logs:
+
+For Component Import List
+
+Find the "Display Component List for Copado Import" step
+Copy the text between the START and END markers
+In Copado Essentials:
+
+Open your deployment
+Click "More > Import Component Selections"
+Paste the copied text and click Import
+
+
+
+For Test Class Selection
+
+Find the "Display Test Classes for Copado Test Selection" step
+Copy the comma-separated list between the START and END markers
+In Copado Essentials:
+
+When running tests, select "Specify Tests"
+Paste the comma-separated list of test classes
+Example format: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest
+
+
+
+Using Manually
+
+Go to the "Actions" tab in your repository
+Select "Copado Import Component List Generator" from the list
+Click "Run workflow" (Use the default branch, typically "main")
+Once complete, click on the workflow run
+Click on the "generate-component-list" job
+Find the "Display Component List for Copado Import" step or "Display Test Classes for Copado Test Selection" step
+Copy the text between the appropriate START and END markers
+Paste into the corresponding section in Copado Essentials
+
+Supported Component Types
 The action automatically detects and formats the following Salesforce component types:
-
-| Component Type | Format Example | File Pattern |
-|----------------|----------------|--------------|
-| Apex Classes | `ApexClass/MyClass` | `*.cls` |
-| Apex Triggers | `ApexTrigger/MyTrigger` | `*.trigger` |
-| Apex Pages | `ApexPage/MyPage` | `*.page` |
-| Apex Components | `ApexComponent/MyComponent` | `*.component` |
-| Lightning Web Components | `LightningComponentBundle/myComponent` | `lwc/myComponent/myComponent.js` |
-| Aura Components | `AuraDefinitionBundle/myComponent` | `aura/myComponent/myComponent.cmp` |
-| Custom Objects | `CustomObject/MyObject__c` | `objects/MyObject__c/MyObject__c.object-meta.xml` |
-| Custom Fields | `CustomField/MyObject__c.MyField__c` | `objects/MyObject__c/fields/MyField__c.field-meta.xml` |
-| Custom Metadata | `CustomMetadata/MyType.MyRecord` | `customMetadata/MyType.MyRecord.md-meta.xml` |
-| Layouts | `Layout/MyObject__c-Layout` | `layouts/MyObject__c-Layout.layout-meta.xml` |
-| Flows | `Flow/MyFlow` | `flows/MyFlow.flow-meta.xml` |
-| Permission Sets | `PermissionSet/MyPermSet` | `permissionsets/MyPermSet.permissionset-meta.xml` |
-| Profiles | `Profile/MyProfile` | `profiles/MyProfile.profile-meta.xml` |
-
-## Troubleshooting
-
-### No Components Found
-
+Component TypeFormat ExampleFile PatternApex ClassesApexClass/MyClass*.clsApex TriggersApexTrigger/MyTrigger*.triggerApex PagesApexPage/MyPage*.pageApex ComponentsApexComponent/MyComponent*.componentLightning Web ComponentsLightningComponentBundle/myComponentlwc/myComponent/myComponent.jsAura ComponentsAuraDefinitionBundle/myComponentaura/myComponent/myComponent.cmpCustom ObjectsCustomObject/MyObject__cobjects/MyObject__c/MyObject__c.object-meta.xmlCustom FieldsCustomField/MyObject__c.MyField__cobjects/MyObject__c/fields/MyField__c.field-meta.xmlCustom MetadataCustomMetadata/MyType.MyRecordcustomMetadata/MyType.MyRecord.md-meta.xmlLayoutsLayout/MyObject__c-Layoutlayouts/MyObject__c-Layout.layout-meta.xmlFlowsFlow/MyFlowflows/MyFlow.flow-meta.xmlPermission SetsPermissionSet/MyPermSetpermissionsets/MyPermSet.permissionset-meta.xmlProfilesProfile/MyProfileprofiles/MyProfile.profile-meta.xml
+Troubleshooting
+No Components Found
 If the action runs successfully but doesn't find any components:
 
-1. **Check file paths**: The action primarily looks for files in standard Salesforce project structures:
-   - SFDX format: `force-app/main/default/...`
-   - Classic format: `src/...`
-   
-2. **Verify file extensions**: Make sure files have the correct extensions (`.cls`, `.trigger`, etc.)
+Check file paths: The action primarily looks for files in standard Salesforce project structures:
 
-3. **Run manually**: Try running the action manually from the Actions tab to process all files in the repository
+SFDX format: force-app/main/default/...
+Classic format: src/...
 
-4. **Check the logs**: Look at the "Get changed files" and "Generate Copado Import List" steps for debugging information
 
-### Adding Components Manually
+Verify file extensions: Make sure files have the correct extensions (.cls, .trigger, etc.)
+Run manually: Try running the action manually from the Actions tab to process all files in the repository
+Check the logs: Look at the "Get changed files" and "Generate Copado Import List" steps for debugging information
 
+Adding Components Manually
 If the action can't automatically detect your components, you can manually create a list using these formats:
-
-```
 ApexClass/MyClassName
 ApexTrigger/MyTriggerName
 CustomObject/MyObject__c
 CustomField/MyObject__c.MyField__c
 LightningComponentBundle/myLwcName
-```
-
-## Customization
-
-### Adding Support for Additional Component Types
-
+Customization
+Adding Support for Additional Component Types
 To add support for additional component types, modify the workflow file and add your component detection logic in the "Generate Copado Import List" step.
-
 For example, to add support for Email Templates:
-
-```bash
-elif [[ $path_without_prefix == email/* ]]; then
+bashelif [[ $path_without_prefix == email/* ]]; then
   if [[ $path_without_prefix == *.email-meta.xml ]]; then
     folder=$(dirname "$path_without_prefix" | sed 's/email\///')
     template=$(basename "$path_without_prefix" .email-meta.xml)
@@ -408,8 +446,5 @@ elif [[ $path_without_prefix == email/* ]]; then
     echo "  - Found Email Template: $folder/$template"
   fi
 fi
-```
-
-### Customizing Output Format
-
+Customizing Output Format
 If you need a different output format, modify the "Display Component List for Copado Import" step in the workflow file.
