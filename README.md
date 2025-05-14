@@ -18,7 +18,6 @@ This GitHub Action automatically generates a formatted list of Salesforce compon
 
 1. Create a new file at `.github/workflows/copado-import-generator.yml` in your repository
 2. Copy the complete GitHub Action workflow code into this file
-   (Request the full code from the developer who shared this document with you)
 3. Commit the file to your repository (main branch is recommended for immediate availability)
 
 ### Permissions for PR Comments (Optional)
