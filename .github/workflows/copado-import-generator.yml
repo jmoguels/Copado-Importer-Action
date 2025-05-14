@@ -1,106 +1,9 @@
-- name: Display Test Classes for Copado Test Selection
-        run: |
-          # Check if we found any test classes
-          TEST_COUNT=$(wc -l < test_classes_list.txt)
-          
-          echo "================================================================="
-          echo "                   COPADO TEST CLASS SELECTION                   "
-          echo "================================================================="
-          echo ""
-          
-          if [ "$TEST_COUNT" -gt 0 ]; then
-            echo "Copy the comma-separated list below for Copado's 'Select Tests' field:"
-            echo ""
-            echo "---------------------START COPY FROM HERE----------------------"
-            cat test_classes_comma_list.txt
-            echo "----------------------END COPY HERE---------------------------"
-            echo ""
-            echo "Paste this list into Copado: More > Run Apex Tests > Specify Tests"
-            echo "Example format: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest"
-          else
-            echo "NO TEST CLASSES FOUND IN THIS PR!"
-            echo ""
-            echo "Possible reasons:"
-            echo "1. The PR doesn't contain any test classes"
-            echo "2. The files don't match expected test class patterns"
-            echo "3. Test classes aren't using @isTest annotation or testMethod keyword"
-            echo ""
-            echo "If you need to run specific tests, add their names manually as a comma-separated list."
-            echo "Example: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest"
-          fi      - name: Generate Test Classes List
-        id: generate-test-list
-        run: |
-          # Create output file for test classes
-          touch test_classes_list.txt
-          
-          echo "Identifying test classes..."
-          echo "------------------------------------------------------------"
-          
-          # Process each file to find test classes
-          while IFS= read -r file; do
-            # Skip if file is empty or just whitespace
-            if [[ -z "${file// }" ]]; then
-              continue
-            fi
-            
-            # Only look at apex class files
-            if [[ $file == *.cls ]]; then
-              echo "Checking for test class: $file"
-              
-              # Read the file content and check for @isTest or testMethod
-              if grep -q -E '@isTest|testMethod' "$file"; then
-                # Extract class name from path
-                if [[ $file == *"force-app/main/default/classes/"* ]]; then
-                  # SFDX format
-                  name=${file#*force-app/main/default/classes/}
-                  name=${name%.cls}
-                  echo "  ✓ Found test class: $name"
-                  echo "$name" >> test_classes_list.txt
-                elif [[ $file == *"src/classes/"* ]]; then
-                  # Classic format
-                  name=${file#*src/classes/}
-                  name=${name%.cls}
-                  echo "  ✓ Found test class: $name"
-                  echo "$name" >> test_classes_list.txt
-                else
-                  # Try general extraction for non-standard paths
-                  name=$(basename "$file" .cls)
-                  echo "  ✓ Found standalone test class: $name"
-                  echo "$name" >> test_classes_list.txt
-                fi
-              else
-                echo "  ✕ Not a test class"
-              fi
-            fi
-          done < changed_files.txt
-          
-          # Create comma-separated list
-          TEST_CLASSES_CSV=$(paste -sd "," test_classes_list.txt)
-          
-          # Count results
-          TEST_COUNT=$(wc -l < test_classes_list.txt)
-          
-          # Display the result
-          echo "------------------------------------------------------------"
-          echo "Found $TEST_COUNT test classes:"
-          if [ "$TEST_COUNT" -gt 0 ]; then
-            echo "Individual classes:"
-            cat test_classes_list.txt
-            echo ""
-            echo "Comma-separated list for Copado:"
-            echo "$TEST_CLASSES_CSV"
-          else
-            echo "NO TEST CLASSES FOUND in the analyzed files."
-          fi
-          echo "------------------------------------------------------------"
-          
-          # Save for later use
-          echo "$TEST_CLASSES_CSV" > test_classes_comma_list.txtname: Copado Import Component List Generator
+name: Copado Import Component List Generator
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   generate-component-list:
@@ -119,7 +22,7 @@ jobs:
             echo "Getting changed files in PR"
             CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
           else
-            # For workflow_dispatch, get all files in the repo
+            # For workflow_dispatch, get all files in the repo (excluding hidden)
             echo "Getting all files in repo (excluding hidden)"
             CHANGED_FILES=$(find . -type f -not -path "*/\.*" | sed 's/^\.\///')
           fi
@@ -222,6 +125,41 @@ jobs:
                   COPADO_FORMAT="CustomField/$obj_name.$field_name"
                   echo "  - Found Custom Field: $obj_name.$field_name"
                 fi
+              elif [[ $path_without_prefix == customMetadata/* ]]; then
+                if [[ $path_without_prefix == *.md-meta.xml ]]; then
+                  file_name=$(basename $path_without_prefix .md-meta.xml)
+                  md_type=$(dirname $path_without_prefix | sed 's/customMetadata\///')
+                  COPADO_FORMAT="CustomMetadata/$md_type.$file_name"
+                  echo "  - Found Custom Metadata: $md_type.$file_name"
+                fi
+              elif [[ $path_without_prefix == layouts/* ]]; then
+                if [[ $path_without_prefix == *.layout-meta.xml ]]; then
+                  name=${path_without_prefix#layouts/}
+                  name=${name%.layout-meta.xml}
+                  COPADO_FORMAT="Layout/$name"
+                  echo "  - Found Layout: $name"
+                fi
+              elif [[ $path_without_prefix == flows/* ]]; then
+                if [[ $path_without_prefix == *.flow-meta.xml ]]; then
+                  name=${path_without_prefix#flows/}
+                  name=${name%.flow-meta.xml}
+                  COPADO_FORMAT="Flow/$name"
+                  echo "  - Found Flow: $name"
+                fi
+              elif [[ $path_without_prefix == permissionsets/* ]]; then
+                if [[ $path_without_prefix == *.permissionset-meta.xml ]]; then
+                  name=${path_without_prefix#permissionsets/}
+                  name=${name%.permissionset-meta.xml}
+                  COPADO_FORMAT="PermissionSet/$name"
+                  echo "  - Found Permission Set: $name"
+                fi
+              elif [[ $path_without_prefix == profiles/* ]]; then
+                if [[ $path_without_prefix == *.profile-meta.xml ]]; then
+                  name=${path_without_prefix#profiles/}
+                  name=${name%.profile-meta.xml}
+                  COPADO_FORMAT="Profile/$name"
+                  echo "  - Found Profile: $name"
+                fi
               fi
             elif [[ $file == *"src/"* ]]; then
               # Handle classic format
@@ -288,6 +226,76 @@ jobs:
           fi
           echo "------------------------------------------------------------"
 
+      - name: Generate Test Classes List
+        id: generate-test-list
+        run: |
+          # Create output file for test classes
+          touch test_classes_list.txt
+          
+          echo "Identifying test classes..."
+          echo "------------------------------------------------------------"
+          
+          # Process each file to find test classes
+          while IFS= read -r file; do
+            # Skip if file is empty or just whitespace
+            if [[ -z "${file// }" ]]; then
+              continue
+            fi
+            
+            # Only look at apex class files
+            if [[ $file == *.cls ]]; then
+              echo "Checking for test class: $file"
+              
+              # Read the file content and check for @isTest or testMethod
+              if grep -q -E '@isTest|testMethod' "$file"; then
+                # Extract class name from path
+                if [[ $file == *"force-app/main/default/classes/"* ]]; then
+                  # SFDX format
+                  name=${file#*force-app/main/default/classes/}
+                  name=${name%.cls}
+                  echo "  ✓ Found test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                elif [[ $file == *"src/classes/"* ]]; then
+                  # Classic format
+                  name=${file#*src/classes/}
+                  name=${name%.cls}
+                  echo "  ✓ Found test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                else
+                  # Try general extraction for non-standard paths
+                  name=$(basename "$file" .cls)
+                  echo "  ✓ Found standalone test class: $name"
+                  echo "$name" >> test_classes_list.txt
+                fi
+              else
+                echo "  ✕ Not a test class"
+              fi
+            fi
+          done < changed_files.txt
+          
+          # Create comma-separated list
+          TEST_CLASSES_CSV=$(paste -sd "," test_classes_list.txt)
+          
+          # Count results
+          TEST_COUNT=$(wc -l < test_classes_list.txt)
+          
+          # Display the result
+          echo "------------------------------------------------------------"
+          echo "Found $TEST_COUNT test classes:"
+          if [ "$TEST_COUNT" -gt 0 ]; then
+            echo "Individual classes:"
+            cat test_classes_list.txt
+            echo ""
+            echo "Comma-separated list for Copado:"
+            echo "$TEST_CLASSES_CSV"
+          else
+            echo "NO TEST CLASSES FOUND in the analyzed files."
+          fi
+          echo "------------------------------------------------------------"
+          
+          # Save for later use
+          echo "$TEST_CLASSES_CSV" > test_classes_comma_list.txt
+
       - name: Display Component List for Copado Import
         run: |
           # Check if we found any components
@@ -323,8 +331,57 @@ jobs:
             echo "LightningComponentBundle/myLwcName"
             echo "---------------------END EXAMPLES----------------------"
           fi
+
+      - name: Display Test Classes for Copado Test Selection
+        run: |
+          # Check if we found any test classes
+          TEST_COUNT=$(wc -l < test_classes_list.txt)
           
-      - name: Add PR Comment with Component Lists
+          echo "================================================================="
+          echo "                   COPADO TEST CLASS SELECTION                   "
+          echo "================================================================="
+          echo ""
+          
+          if [ "$TEST_COUNT" -gt 0 ]; then
+            echo "Copy the comma-separated list below for Copado's 'Select Tests' field:"
+            echo ""
+            echo "---------------------START COPY FROM HERE----------------------"
+            cat test_classes_comma_list.txt
+            echo "----------------------END COPY HERE---------------------------"
+            echo ""
+            echo "Paste this list into Copado: More > Run Apex Tests > Specify Tests"
+            echo "Example format: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest"
+          else
+            echo "NO TEST CLASSES FOUND IN THIS PR!"
+            echo ""
+            echo "Possible reasons:"
+            echo "1. The PR doesn't contain any test classes"
+            echo "2. The files don't match expected test class patterns"
+            echo "3. Test classes aren't using @isTest annotation or testMethod keyword"
+            echo ""
+            echo "If you need to run specific tests, add their names manually as a comma-separated list."
+            echo "Example: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest"
+          fi
+
+      - name: Prepare PR Comment Content
+        if: github.event_name == 'pull_request'
+        run: |
+          # Create the PR comment file
+          echo "## Copado Component and Test Lists" > pr_comment.md
+          echo "" >> pr_comment.md
+          echo "### Component Import List" >> pr_comment.md
+          echo "Copy this list and paste into Copado: More > Import Component Selections" >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          cat copado_import_list.txt >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          echo "" >> pr_comment.md
+          echo "### Test Class Selection" >> pr_comment.md
+          echo "Copy this comma-separated list and paste into Copado's \"Specify Tests\" field" >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          cat test_classes_comma_list.txt >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+
+      - name: Post PR Comment
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v4
         with:
@@ -332,68 +389,14 @@ jobs:
           script: |
             const fs = require('fs');
             try {
-              // Read the component list
-              let componentList = '';
-              try {
-                componentList = fs.readFileSync('copado_import_list.txt', 'utf8');
-              } catch (err) {
-                componentList = 'No components found in this PR';
-              }
-              
-              // Read the test class list
-              let testList = '';
-              try {
-                testList = fs.readFileSync('test_classes_comma_list.txt', 'utf8');
-                if (!testList.trim()) {
-                  testList = 'No test classes found in this PR';
-                }
-              } catch (err) {
-                testList = 'No test classes found in this PR';
-              }
-              
-              // Create the comment body with both lists
-              const commentBody = `## Copado Component and Test Lists
-
-### Component Import List
-Copy this list and paste into Copado: More > Import Component Selections
-\`\`\`
-${componentList}
-\`\`\`
-
-### Test Class Selection
-Copy this comma-separated list and paste into Copado's "Specify Tests" field
-\`\`\`
-${testList}
-\`\`\`
-`;
-              
-              // Post the comment to the PR
-              github.rest.issues.createComment({
+              const commentContent = fs.readFileSync('pr_comment.md', 'utf8');
+              github.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: commentBody
+                body: commentContent
               });
-              
               console.log('Successfully posted component lists as a PR comment');
             } catch (error) {
               console.log('Error posting PR comment:', error);
-              
-              // If we fail to post a comment, at least log what we would have posted
-              console.log('Comment content that would have been posted:');
-              console.log('---------------------------------------------------');
-              console.log('Component List:');
-              try {
-                console.log(fs.readFileSync('copado_import_list.txt', 'utf8'));
-              } catch (err) {
-                console.log('No component list file found');
-              }
-              console.log('---------------------------------------------------');
-              console.log('Test Class List:');
-              try {
-                console.log(fs.readFileSync('test_classes_comma_list.txt', 'utf8'));
-              } catch (err) {
-                console.log('No test class list file found');
-              }
-              console.log('---------------------------------------------------');
             }
