@@ -18,8 +18,50 @@ This GitHub Action automatically generates a formatted list of Salesforce compon
 
 1. Create a new file at `.github/workflows/copado-import-generator.yml` in your repository
 2. Copy the complete GitHub Action workflow code into this file
-   (For the full workflow code, please see the [GitHub Action Code](#) section at the bottom of this document or in the repository)
+   (Request the full code from the developer who shared this document with you)
 3. Commit the file to your repository (main branch is recommended for immediate availability)
+
+### Permissions for PR Comments (Optional)
+
+By default, the GitHub Action will display the component lists in the workflow summary, which is viewable from the Actions tab. If you want to enable automatic PR comments instead:
+
+1. Go to your repository settings
+2. Navigate to Settings > Actions > General
+3. Scroll down to "Workflow permissions"
+4. Select "Read and write permissions"
+5. Check "Allow GitHub Actions to create and approve pull requests"
+6. Save the changes
+
+Then modify your workflow file to include this code instead of the GitHub Step Summary section:
+
+```yaml
+- name: Prepare PR Comment Content
+  if: github.event_name == 'pull_request'
+  run: |
+    # Create the PR comment file
+    echo "## Copado Component and Test Lists" > pr_comment.md
+    echo "" >> pr_comment.md
+    echo "### Component Import List" >> pr_comment.md
+    echo "Copy this list and paste into Copado: More > Import Component Selections" >> pr_comment.md
+    echo "\`\`\`" >> pr_comment.md
+    cat copado_import_list.txt >> pr_comment.md
+    echo "\`\`\`" >> pr_comment.md
+    echo "" >> pr_comment.md
+    echo "### Test Class Selection" >> pr_comment.md
+    echo "Copy this comma-separated list and paste into Copado's \"Specify Tests\" field" >> pr_comment.md
+    echo "\`\`\`" >> pr_comment.md
+    cat test_classes_comma_list.txt >> pr_comment.md
+    echo "\`\`\`" >> pr_comment.md
+
+- name: Post PR Comment
+  if: github.event_name == 'pull_request'
+  uses: peter-evans/create-or-update-comment@v2
+  with:
+    issue-number: ${{ github.event.pull_request.number }}
+    body-file: pr_comment.md
+```
+
+This configuration will post the component lists directly as a comment on your PR after setting the appropriate permissions.
 
 ## How It Works
 
@@ -49,10 +91,20 @@ This GitHub Action:
 
 1. Create or update a pull request with Salesforce metadata changes
 2. The action will automatically run
-3. Go to the "Actions" tab in your repository
-4. Click on the latest workflow run for your PR
-5. Click on the "generate-component-list" job
-6. Find the following sections in the logs:
+3. Once complete:
+   - The component lists will appear in the workflow summary
+   - To access them: Go to Actions tab > Click on the workflow run > View the summary at the top
+
+4. If you prefer to have the lists automatically posted as PR comments (optional):
+   - Go to your repository settings
+   - Navigate to Settings > Actions > General
+   - Scroll down to "Workflow permissions"
+   - Select "Read and write permissions"
+   - Check "Allow GitHub Actions to create and approve pull requests"
+   - Save the changes
+   - Modify the workflow file to use PR comments (see "Enabling PR Comments" section)
+
+5. Copy the lists directly from the workflow summary (or PR comment if enabled)
 
 #### For Component Import List
 1. Find the "Display Component List for Copado Import" step
@@ -68,7 +120,7 @@ This GitHub Action:
 3. In Copado Essentials:
    - When running tests, select "Specify Tests"
    - Paste the comma-separated list of test classes
-   - Example format: `ProductListClassTest,CategoriesControllerTest,SearchAccountsLWCControllerTest`
+   - Example format: `ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest`
 
 ### Using Manually
 
@@ -135,7 +187,7 @@ The action handles test classes in:
 ### Example Format
 
 ```
-ProductListClassTest,CategoriesControllerTest,SearchAccountsLWCControllerTest
+ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest
 ```
 
 This format works directly with Copado's test selection field without requiring any modifications.
