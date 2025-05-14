@@ -363,7 +363,25 @@ jobs:
             echo "Example: ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest"
           fi
 
-      - name: Add PR Comment with Component Lists
+      - name: Prepare PR Comment Content
+        if: github.event_name == 'pull_request'
+        run: |
+          # Create the PR comment file
+          echo "## Copado Component and Test Lists" > pr_comment.md
+          echo "" >> pr_comment.md
+          echo "### Component Import List" >> pr_comment.md
+          echo "Copy this list and paste into Copado: More > Import Component Selections" >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          cat copado_import_list.txt >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          echo "" >> pr_comment.md
+          echo "### Test Class Selection" >> pr_comment.md
+          echo "Copy this comma-separated list and paste into Copado's \"Specify Tests\" field" >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+          cat test_classes_comma_list.txt >> pr_comment.md
+          echo "\`\`\`" >> pr_comment.md
+
+      - name: Post PR Comment
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v4
         with:
@@ -371,68 +389,14 @@ jobs:
           script: |
             const fs = require('fs');
             try {
-              // Read the component list
-              let componentList = '';
-              try {
-                componentList = fs.readFileSync('copado_import_list.txt', 'utf8');
-              } catch (err) {
-                componentList = 'No components found in this PR';
-              }
-              
-              // Read the test class list
-              let testList = '';
-              try {
-                testList = fs.readFileSync('test_classes_comma_list.txt', 'utf8');
-                if (!testList.trim()) {
-                  testList = 'No test classes found in this PR';
-                }
-              } catch (err) {
-                testList = 'No test classes found in this PR';
-              }
-              
-              // Create the comment body with both lists
-              const commentBody = `## Copado Component and Test Lists
-
-### Component Import List
-Copy this list and paste into Copado: More > Import Component Selections
-\`\`\`
-${componentList}
-\`\`\`
-
-### Test Class Selection
-Copy this comma-separated list and paste into Copado's "Specify Tests" field
-\`\`\`
-${testList}
-\`\`\`
-`;
-              
-              // Post the comment to the PR
-              github.rest.issues.createComment({
+              const commentContent = fs.readFileSync('pr_comment.md', 'utf8');
+              await github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: commentBody
+                body: commentContent
               });
-              
               console.log('Successfully posted component lists as a PR comment');
             } catch (error) {
               console.log('Error posting PR comment:', error);
-              
-              // If we fail to post a comment, at least log what we would have posted
-              console.log('Comment content that would have been posted:');
-              console.log('---------------------------------------------------');
-              console.log('Component List:');
-              try {
-                console.log(fs.readFileSync('copado_import_list.txt', 'utf8'));
-              } catch (err) {
-                console.log('No component list file found');
-              }
-              console.log('---------------------------------------------------');
-              console.log('Test Class List:');
-              try {
-                console.log(fs.readFileSync('test_classes_comma_list.txt', 'utf8'));
-              } catch (err) {
-                console.log('No test class list file found');
-              }
-              console.log('---------------------------------------------------');
             }
