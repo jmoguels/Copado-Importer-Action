@@ -119,7 +119,7 @@ This GitHub Action:
 3. In Copado Essentials:
    - When running tests, select "Specify Tests"
    - Paste the comma-separated list of test classes
-   - Example format: `ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest`
+   - Example format: `ProductListClassTest,SearchAccountsLWCControllerTest`
 
 ### Using Manually
 
@@ -186,7 +186,7 @@ The action handles test classes in:
 ### Example Format
 
 ```
-ProductListClassTest,CoolantControllerTest,SearchAccountsLWCControllerTest
+ProductListClassTest,SearchAccountsLWCControllerTest
 ```
 
 This format works directly with Copado's test selection field without requiring any modifications.
